@@ -51,10 +51,8 @@ class GridSearch:
         if experiment_dir:
             self.output_dir = os.path.join(experiment_dir, 'grid_search_results')
         else:
-            self.output_dir = os.path.join(
-                self.config.get('outputs', {}).get('base_dir', '.'),
-                'grid_search_results'
-            )
+            output_base = self.config.get('outputs', {}).get('base_dir', '.')
+            self.output_dir = os.path.join(output_base, 'grid_search_results')
         
         # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
@@ -121,7 +119,8 @@ class GridSearch:
         return param_combinations
     
     def _evaluate_parameters(self, strategy: BaseStrategy, params: Dict[str, Any], 
-                           data: pd.DataFrame, symbol: str = "BTCUSDT") -> Dict[str, float]:
+                           data: pd.DataFrame, symbol: str = "BTCUSDT",
+                           backtester = None) -> Dict[str, float]:
         """
         Evaluate a set of parameters for a strategy.
         
@@ -130,6 +129,7 @@ class GridSearch:
             params: Parameters to set
             data: Data to evaluate on
             symbol: Symbol to use for evaluation
+            backtester: Optional backtester to use (uses self.backtester if None)
             
         Returns:
             Dictionary of performance metrics
@@ -138,18 +138,18 @@ class GridSearch:
         strategy.set_parameters(params)
         
         # Run backtest
-        backtester = Backtester(self.config)
-        results = backtester.run_backtest(strategy, data, symbol)
+        bt = backtester if backtester is not None else Backtester(self.config)
+        results = bt.run_backtest(strategy, data, symbol)
         
         # Return evaluation metrics
         return results['metrics']
         
-    def save_results(self, results: pd.DataFrame, strategy_name: str, symbol: str) -> str:
+    def save_results(self, results: Union[pd.DataFrame, List[Dict]], strategy_name: str, symbol: str) -> str:
         """
         Save grid search results to disk.
         
         Args:
-            results: DataFrame with grid search results
+            results: DataFrame or list of dictionaries with grid search results
             strategy_name: Name of the strategy
             symbol: Symbol used for backtesting
             
@@ -164,33 +164,63 @@ class GridSearch:
         filename = f"{strategy_name}_{symbol}_{timestamp}.csv"
         output_path = os.path.join(self.output_dir, filename)
         
+        # Convert list to DataFrame if needed
+        if isinstance(results, list):
+            # If results is a list of dicts with nested dicts, flatten them
+            flat_results = []
+            for result in results:
+                flat_result = {}
+                for key, value in result.items():
+                    if isinstance(value, dict):
+                        for subkey, subvalue in value.items():
+                            flat_result[f"{key}_{subkey}"] = subvalue
+                    else:
+                        flat_result[key] = value
+                flat_results.append(flat_result)
+            results_df = pd.DataFrame(flat_results)
+        else:
+            results_df = results
+        
         # Save results
-        results.to_csv(output_path, index=False)
+        results_df.to_csv(output_path, index=False)
         logger.info(f"Grid search results saved to {output_path}")
         
         return output_path
     
     def run_grid_search(
         self, 
-        strategy_name: str,
+        strategy_or_name: Union[str, BaseStrategy],
         param_grid: Dict[str, List[Any]],
         data: pd.DataFrame,
-        metrics_to_maximize: List[str] = ['sharpe_ratio', 'total_return'],
-        top_n: int = 10
+        symbol: str = "BTCUSDT",
+        backtester = None,
+        metrics_to_maximize: List[str] = None
     ) -> pd.DataFrame:
         """
         Run grid search for a strategy on the given data.
         
         Args:
-            strategy_name: Name of the strategy
+            strategy_or_name: Name of the strategy or strategy instance
             param_grid: Dictionary with parameter names as keys and lists of possible values
             data: DataFrame with OHLCV and indicator data
+            symbol: Symbol for backtesting
+            backtester: Optional backtester instance to use
             metrics_to_maximize: List of metrics to maximize in order of priority
-            top_n: Number of top performing parameter sets to return
             
         Returns:
             DataFrame with parameter combinations and performance metrics
         """
+        if metrics_to_maximize is None:
+            metrics_to_maximize = ['total_return', 'sharpe_ratio']
+            
+        # Handle both strategy name string and strategy instance
+        if isinstance(strategy_or_name, str):
+            strategy_name = strategy_or_name
+            strategy_instance = None
+        else:
+            strategy_name = strategy_or_name.get_name()
+            strategy_instance = strategy_or_name
+        
         logger.info(f"Starting grid search for {strategy_name}")
         logger.info(f"Parameter grid: {param_grid}")
         logger.info(f"Data shape: {data.shape}")
@@ -205,7 +235,14 @@ class GridSearch:
         
         for params in tqdm(param_combinations, desc=f"Grid search for {strategy_name}"):
             try:
-                metrics = self._evaluate_parameters(self._get_strategy_class(strategy_name)(strategy_name, params), params, data)
+                # Create strategy instance if needed
+                if strategy_instance is None:
+                    strategy = self._get_strategy_class(strategy_name)(strategy_name, params)
+                else:
+                    strategy = strategy_instance
+                    strategy.set_parameters(params)
+                
+                metrics = self._evaluate_parameters(strategy, params, data, symbol, backtester)
                 
                 # Combine parameters and metrics
                 result = {**params, **metrics}
@@ -215,33 +252,19 @@ class GridSearch:
                 logger.error(f"Error evaluating {strategy_name} with params {params}: {str(e)}")
         
         # Convert to DataFrame
-        results_df = pd.DataFrame(results)
-        
-        # Sort by metrics in order of priority
-        for metric in reversed(metrics_to_maximize):
-            results_df = results_df.sort_values(by=metric, ascending=False)
-        
-        # Save all results
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_path = self.save_results(results_df, strategy_name, "all")
-        
-        # Get top N results
-        top_results = results_df.head(top_n)
-        
-        # Save top results
-        top_results_path = self.save_results(top_results, strategy_name, "top")
-        
-        # Log best result
-        best_params = {k: top_results.iloc[0][k] for k in param_grid.keys()}
-        best_metrics = {
-            metric: top_results.iloc[0][metric] 
-            for metric in metrics_to_maximize if metric in top_results.columns
-        }
-        
-        logger.info(f"Best parameters for {strategy_name}: {best_params}")
-        logger.info(f"Best metrics: {best_metrics}")
-        
-        return results_df
+        if results:
+            results_df = pd.DataFrame(results)
+            
+            # Sort by metrics in order of priority
+            for metric in reversed(metrics_to_maximize):
+                if metric in results_df.columns:
+                    results_df = results_df.sort_values(by=metric, ascending=False)
+            
+            return results_df
+        else:
+            # Return empty DataFrame with expected columns
+            columns = list(param_grid.keys()) + list(metrics_to_maximize)
+            return pd.DataFrame(columns=columns)
     
     def run_multi_strategy_grid_search(
         self,
@@ -271,7 +294,7 @@ class GridSearch:
             logger.info(f"Running grid search for {strategy_name}")
             
             strategy_results = self.run_grid_search(
-                strategy_name=strategy_name,
+                strategy_or_name=strategy_name,
                 param_grid=param_grid,
                 data=data,
                 metrics_to_maximize=metrics_to_maximize,
@@ -405,7 +428,7 @@ def main():
         param_grid = param_grids[args.strategy]
         
         results = grid_search.run_grid_search(
-            strategy_name=args.strategy,
+            strategy_or_name=args.strategy,
             param_grid=param_grid,
             data=data,
             metrics_to_maximize=args.metrics,

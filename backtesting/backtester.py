@@ -416,9 +416,17 @@ class Backtester:
             losing_trades_sum = abs(trades_df.loc[trades_df['pnl'] <= 0, 'pnl'].sum())
             metrics['profit_factor'] = winning_trades_sum / losing_trades_sum if losing_trades_sum > 0 else float('inf')
             
-            # Average trade duration
-            trades_df['duration'] = (trades_df['exit_time'] - trades_df['entry_time']).dt.total_seconds() / 3600  # hours
-            metrics['avg_trade_duration_hours'] = trades_df['duration'].mean()
+            # Average trade duration - check if time columns exist
+            if 'exit_time' in trades_df.columns and 'entry_time' in trades_df.columns:
+                trades_df['duration'] = (trades_df['exit_time'] - trades_df['entry_time']).dt.total_seconds() / 3600  # hours
+                metrics['avg_trade_duration_hours'] = trades_df['duration'].mean()
+            elif 'exit_date' in trades_df.columns and 'entry_date' in trades_df.columns:
+                # Try using date columns instead
+                trades_df['duration'] = (pd.to_datetime(trades_df['exit_date']) - pd.to_datetime(trades_df['entry_date'])).dt.total_seconds() / 3600  # hours
+                metrics['avg_trade_duration_hours'] = trades_df['duration'].mean()
+            else:
+                # Skip duration calculation if time columns don't exist
+                metrics['avg_trade_duration_hours'] = 0
         
         # Risk metrics
         if not equity_df.empty:

@@ -24,7 +24,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from data.download_data import BinanceDataDownloader
 from data.data_processor import DataProcessor
-from data.technical_indicators import calculate_sma, calculate_rsi, calculate_macd
+from data.technical_indicators import calculate_sma, calculate_rsi, calculate_macd, add_indicators
 from models.train_models import train_model
 from models.base_model import BaseModel
 from models.statistical_models import ARIMAModel
@@ -250,13 +250,16 @@ class TestEndToEnd(unittest.TestCase):
     def test_backtesting(self):
         """Test backtesting."""
         # Load processed data
-        df = pd.read_pickle(os.path.join(self.test_dir, 'processed', 'test_data_with_indicators.pkl'))
+        df = pd.read_pickle(os.path.join(self.test_dir, 'processed', 'test_data.pkl'))
+        
+        # Add indicators for testing
+        df_with_indicators = add_indicators(df, self.config['processing'])
+        
+        # Save the file with indicators for future use
+        df_with_indicators.to_pickle(os.path.join(self.test_dir, 'processed', 'test_data_with_indicators.pkl'))
         
         # Create strategy
         strategy = MovingAverageCrossover('MA_Crossover', {'fast_ma': 10, 'slow_ma': 20, 'ma_type': 'sma'})
-        
-        # Generate signals
-        signals = strategy.generate_signals(df)
         
         # Create backtester (with minimal config)
         backtester = Backtester({
@@ -270,12 +273,13 @@ class TestEndToEnd(unittest.TestCase):
         })
         
         # Run backtest
-        metrics = backtester.backtest(df, signals)
+        backtest_results = backtester.backtest(df_with_indicators, strategy)
+        metrics = backtest_results['metrics']
         
         # Verify metrics
         self.assertIn('total_return', metrics, "Should calculate total return")
         self.assertIn('sharpe_ratio', metrics, "Should calculate Sharpe ratio")
-        self.assertIn('max_drawdown', metrics, "Should calculate max drawdown")
+        self.assertIn('max_drawdown_pct', metrics, "Should calculate max drawdown")
         self.assertIn('win_rate', metrics, "Should calculate win rate")
     
     def test_end_to_end_pipeline(self):
@@ -290,7 +294,10 @@ class TestEndToEnd(unittest.TestCase):
         df = pd.read_pickle(os.path.join(self.test_dir, 'processed', 'test_data.pkl'))
         
         processor = DataProcessor(self.config)
-        df_processed = processor.process_data(df)
+        processed_data = processor.process_data(df)
+        
+        # Get the processed dataframe from the dictionary
+        df_processed = processed_data['all']
         
         # Step 3: Train a simple model (using a small subset for speed)
         model_params = {'p': 2, 'd': 1, 'q': 0}
@@ -333,19 +340,17 @@ class TestEndToEnd(unittest.TestCase):
         
         # Step 5: Generate strategy signals
         strategy = MovingAverageCrossover('MA_Crossover', {'fast_ma': 10, 'slow_ma': 20, 'ma_type': 'sma'})
-        signals = strategy.generate_signals(df_processed)
         
         # Step 6: Run backtest
         backtester = Backtester(self.config)
-        metrics = backtester.backtest(df_processed, signals)
+        backtest_results = backtester.backtest(df_processed, strategy)
+        metrics = backtest_results['metrics']
         
         # Verify metrics
         self.assertIn('total_return', metrics, "Should calculate total return")
         self.assertIn('sharpe_ratio', metrics, "Should calculate Sharpe ratio")
-        self.assertIn('max_drawdown', metrics, "Should calculate max drawdown")
-        
-        # Log success
-        print(f"End-to-end test successful. Metrics: {metrics}")
+        self.assertIn('max_drawdown_pct', metrics, "Should calculate max drawdown")
+        self.assertIn('win_rate', metrics, "Should calculate win rate")
 
 if __name__ == '__main__':
     unittest.main()

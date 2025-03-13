@@ -232,7 +232,7 @@ class RiskManager:
         pnl = position['value'] * pnl_pct
         
         # Update capital - only add the PNL, not the original position value again
-        # since the position value was already subtracted from current_capital when opened
+        # since the position value was never subtracted from current_capital when opened
         self.current_capital += pnl
         
         # Trade info
