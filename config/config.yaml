@@ -1,0 +1,240 @@
+# Main Configuration File for Trading System
+
+# Data acquisition settings
+data:
+  binance:
+    base_url: "https://api.binance.us/api/v3"
+    symbols:
+      - "BTCUSDT"
+      - "ETHUSDT"
+    start_date: "2023-01-01"
+    end_date: "2024-12-31"
+    interval: "1m"
+    retries: 3
+    timeout: 10  # seconds
+    rate_limit: 1200  # requests per minute
+  
+  database:
+    path: "market_data.db"
+    table_prefix: "ohlcv_"
+  
+  validation:
+    check_missing_bars: true
+    check_zero_volume: true
+    max_missing_bars_pct: 5  # Max percentage of missing bars allowed
+
+# Data processing settings
+processing:
+  train_val_test_split:
+    train: 0.7
+    val: 0.15
+    test: 0.15
+  
+  indicators:
+    - name: "SMA"
+      params:
+        - {"window": 20}
+        - {"window": 50}
+        - {"window": 200}
+    
+    - name: "RSI"
+      params:
+        - {"window": 14}
+    
+    - name: "MACD"
+      params:
+        - {"fast": 12, "slow": 26, "signal": 9}
+    
+    - name: "Bollinger"
+      params:
+        - {"window": 20, "std_dev": 2}
+
+# Model settings
+models:
+  statistical:
+    - name: "ARIMA"
+      params:
+        p: 5
+        d: 1
+        q: 0
+    
+    - name: "GARCH"
+      params:
+        p: 1
+        q: 1
+  
+  machine_learning:
+    - name: "MLP"
+      params:
+        hidden_layers: [64, 32]
+        activation: "relu"
+        dropout: 0.2
+        learning_rate: 0.001
+        batch_size: 32
+        epochs: 100
+    
+    - name: "LSTM"
+      params:
+        hidden_size: 64
+        num_layers: 2
+        dropout: 0.2
+        learning_rate: 0.001
+        batch_size: 32
+        epochs: 100
+        sequence_length: 30
+
+# Trading strategies configuration
+strategies:
+  - name: MovingAverageCrossover
+    params:
+      fast_ma: 10
+      slow_ma: 30
+      ma_type: "ema"  # "sma" or "ema"
+  
+  - name: RSIThreshold
+    params:
+      rsi_period: 14
+      oversold: 30
+      overbought: 70
+  
+  - name: BollingerBreakout
+    params:
+      window: 20
+      std_dev: 2.0
+      entry_threshold: 0.05
+  
+  - name: MACDStrategy
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+      histogram_threshold: 0.0
+  
+  - name: SupportResistance
+    params:
+      window: 20
+      threshold: 0.02
+      bounce_factor: 0.5
+
+# Backtesting configuration
+backtesting:
+  initial_capital: 10000.0
+  position_sizing: "percentage"  # "fixed" or "percentage"
+  fixed_position_size: 1000.0
+  percentage_position_size: 0.1  # 10% of capital
+  fees:
+    maker: 0.001  # 0.1%
+    taker: 0.001  # 0.1%
+  slippage: 0.001  # 0.1%
+  output_dir: "./backtest_results"
+
+# Trading configuration
+trading:
+  mode: "paper"  # "paper" or "live"
+  symbols: ["BTC-USD", "ETH-USD"]
+  update_interval: 60  # seconds
+  db_path: "./market_data.db"
+  position_sizing: "percentage"  # "fixed" or "percentage"
+  fixed_position_size: 1000.0
+  percentage_position_size: 0.1  # 10% of capital
+  fees:
+    maker: 0.001  # 0.1%
+    taker: 0.001  # 0.1%
+  
+  # Paper trading settings
+  paper:
+    initial_balance: 10000.0
+  
+  # Live trading API settings
+  api:
+    exchange: "binance_us"
+    api_key: "your_api_key_here"
+    api_secret: "your_api_secret_here"
+
+# Visualization settings
+visualization:
+  output_dir: "./visualizations"
+  plot_style: "seaborn-v0_8-darkgrid"
+  dpi: 300
+  formats:
+    - "png"
+    - "svg"
+  
+  # Training visualization
+  training:
+    plot_loss: true
+    plot_metrics: true
+    plot_predictions: true
+  
+  # Backtest visualization
+  backtest:
+    plot_equity_curve: true
+    plot_drawdown: true
+    plot_trade_distribution: true
+    plot_monthly_returns: true
+    plot_performance_comparison: true
+  
+  # Technical indicator visualization
+  indicators:
+    max_lookback_periods: 200  # Number of periods to show in indicator charts
+    include:
+      - "price"
+      - "volume"
+      - "moving_averages"
+      - "oscillators"
+      - "bollinger_bands"
+      - "macd"
+  
+  # Monte Carlo visualization
+  monte_carlo:
+    show_confidence_intervals: true
+    confidence_level: 0.95  # 95% confidence interval
+    show_mean: true
+    max_paths_to_show: 100  # Number of individual paths to display
+
+# Monte Carlo simulation settings
+simulation:
+  output_dir: "./simulations"
+  n_simulations: 1000
+  time_steps: 252  # Default to 1 year of trading days
+  
+  # Simulation process parameters
+  process: "gbm"  # "gbm", "mean_reversion", "jump_diffusion", "bull_market", "bear_market", "sideways", "high_volatility"
+  
+  # Geometric Brownian Motion parameters
+  drift: 0.05  # Annual drift
+  volatility: 0.2  # Annual volatility
+  
+  # Mean reversion parameters (Ornstein-Uhlenbeck)
+  mean_reversion_strength: 0.1
+  mean_reversion_level: 100.0
+  
+  # Jump diffusion parameters
+  jump_intensity: 0.1  # Jump frequency
+  jump_size_mean: 0.0  # Mean jump size
+  jump_size_std: 0.1  # Jump size standard deviation
+  
+  # Output settings
+  save_simulations: true
+  plot_simulations: true
+  
+  # Scenario testing
+  scenarios:
+    - "bull_market"
+    - "bear_market"
+    - "sideways"
+    - "high_volatility"
+
+# Experiment configuration
+experiment:
+  name: "default"
+  directory: "./output"
+  save_config: true
+  version_outputs: true
+
+# Logging settings
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  log_to_file: true
+  log_file: "trading_system.log"
