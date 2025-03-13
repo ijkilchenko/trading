@@ -27,7 +27,7 @@ from backtesting.backtester import Backtester
 
 logger = logging.getLogger(__name__)
 
-class StrategyGridSearch:
+class GridSearch:
     """Grid search for optimizing trading strategy parameters."""
     
     def __init__(self, config_path: str, experiment_dir: Optional[str] = None):
@@ -38,8 +38,12 @@ class StrategyGridSearch:
             config_path: Path to the YAML configuration file
             experiment_dir: Optional experiment directory for outputs
         """
-        with open(config_path, 'r') as file:
-            self.config = yaml.safe_load(file)
+        if isinstance(config_path, str):
+            with open(config_path, 'r') as file:
+                self.config = yaml.safe_load(file)
+        else:
+            # Handle case where config is passed directly as a dict
+            self.config = config_path
         
         self.experiment_dir = experiment_dir
         
@@ -48,14 +52,20 @@ class StrategyGridSearch:
             self.output_dir = os.path.join(experiment_dir, 'grid_search_results')
         else:
             self.output_dir = os.path.join(
-                self.config.get('experiment', {}).get('base_output_dir', './output'),
+                self.config.get('outputs', {}).get('base_dir', '.'),
                 'grid_search_results'
             )
         
+        # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
         
+        # Extract grid search configuration
+        grid_search_config = self.config.get('grid_search', {})
+        self.optimization_metric = grid_search_config.get('optimization_metric', 'total_return')
+        self.n_jobs = grid_search_config.get('n_jobs', 1)
+        
         # Initialize backtester
-        self.backtester = Backtester(config_path)
+        self.backtester = Backtester(self.config)
     
     def _get_strategy_class(self, strategy_name: str) -> type:
         """
@@ -86,55 +96,79 @@ class StrategyGridSearch:
         
         return strategy_classes[strategy_name]
     
-    def _generate_parameter_grid(self, strategy_name: str, param_grid: Dict[str, List[Any]]) -> List[Dict[str, Any]]:
+    def _generate_parameter_grid(self, param_grid: Dict[str, List[Any]]) -> List[Dict[str, Any]]:
         """
-        Generate all possible combinations of parameters.
+        Generate all combinations of parameters for grid search.
         
         Args:
-            strategy_name: Name of the strategy
-            param_grid: Dictionary with parameter names as keys and lists of possible values
+            param_grid: Dictionary mapping parameter names to lists of values
             
         Returns:
-            List of parameter dictionaries, each representing one combination
+            List of parameter dictionaries, one for each combination
         """
-        # Get all parameter names
         param_names = list(param_grid.keys())
+        param_values = list(param_grid.values())
         
-        # Generate all combinations of parameter values
-        param_values = list(itertools.product(*[param_grid[name] for name in param_names]))
+        # Generate all combinations
+        combinations = list(itertools.product(*param_values))
         
-        # Convert to list of dictionaries
-        param_dicts = []
-        for values in param_values:
-            param_dict = {name: value for name, value in zip(param_names, values)}
-            param_dicts.append(param_dict)
+        # Convert to list of parameter dictionaries
+        param_combinations = []
+        for combo in combinations:
+            param_dict = {param_names[i]: combo[i] for i in range(len(param_names))}
+            param_combinations.append(param_dict)
         
-        return param_dicts
+        return param_combinations
     
-    def _evaluate_strategy(
-        self, strategy_name: str, params: Dict[str, Any], data: pd.DataFrame
-    ) -> Dict[str, float]:
+    def _evaluate_parameters(self, strategy: BaseStrategy, params: Dict[str, Any], 
+                           data: pd.DataFrame, symbol: str = "BTCUSDT") -> Dict[str, float]:
         """
-        Evaluate a strategy with specific parameters on the given data.
+        Evaluate a set of parameters for a strategy.
         
         Args:
-            strategy_name: Name of the strategy
-            params: Strategy parameters
-            data: DataFrame with OHLCV and indicator data
+            strategy: Strategy to evaluate
+            params: Parameters to set
+            data: Data to evaluate on
+            symbol: Symbol to use for evaluation
             
         Returns:
-            Dictionary with performance metrics
+            Dictionary of performance metrics
         """
-        strategy_class = self._get_strategy_class(strategy_name)
-        strategy = strategy_class(strategy_name, params)
-        
-        # Generate signals
-        signals = strategy.generate_signals(data)
+        # Set parameters
+        strategy.set_parameters(params)
         
         # Run backtest
-        metrics = self.backtester.backtest(data, signals)
+        backtester = Backtester(self.config)
+        results = backtester.run_backtest(strategy, data, symbol)
         
-        return metrics
+        # Return evaluation metrics
+        return results['metrics']
+        
+    def save_results(self, results: pd.DataFrame, strategy_name: str, symbol: str) -> str:
+        """
+        Save grid search results to disk.
+        
+        Args:
+            results: DataFrame with grid search results
+            strategy_name: Name of the strategy
+            symbol: Symbol used for backtesting
+            
+        Returns:
+            Path to the saved results file
+        """
+        # Ensure output directory exists
+        os.makedirs(self.output_dir, exist_ok=True)
+        
+        # Generate output file name
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{strategy_name}_{symbol}_{timestamp}.csv"
+        output_path = os.path.join(self.output_dir, filename)
+        
+        # Save results
+        results.to_csv(output_path, index=False)
+        logger.info(f"Grid search results saved to {output_path}")
+        
+        return output_path
     
     def run_grid_search(
         self, 
@@ -162,7 +196,7 @@ class StrategyGridSearch:
         logger.info(f"Data shape: {data.shape}")
         
         # Generate all parameter combinations
-        param_combinations = self._generate_parameter_grid(strategy_name, param_grid)
+        param_combinations = self._generate_parameter_grid(param_grid)
         
         logger.info(f"Generated {len(param_combinations)} parameter combinations")
         
@@ -171,7 +205,7 @@ class StrategyGridSearch:
         
         for params in tqdm(param_combinations, desc=f"Grid search for {strategy_name}"):
             try:
-                metrics = self._evaluate_strategy(strategy_name, params, data)
+                metrics = self._evaluate_parameters(self._get_strategy_class(strategy_name)(strategy_name, params), params, data)
                 
                 # Combine parameters and metrics
                 result = {**params, **metrics}
@@ -189,19 +223,13 @@ class StrategyGridSearch:
         
         # Save all results
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_path = os.path.join(self.output_dir, f"{strategy_name}_grid_search_{timestamp}.csv")
-        results_df.to_csv(results_path, index=False)
-        
-        logger.info(f"Saved all grid search results to {results_path}")
+        results_path = self.save_results(results_df, strategy_name, "all")
         
         # Get top N results
         top_results = results_df.head(top_n)
         
         # Save top results
-        top_results_path = os.path.join(self.output_dir, f"{strategy_name}_top_{top_n}_{timestamp}.csv")
-        top_results.to_csv(top_results_path, index=False)
-        
-        logger.info(f"Saved top {top_n} results to {top_results_path}")
+        top_results_path = self.save_results(top_results, strategy_name, "top")
         
         # Log best result
         best_params = {k: top_results.iloc[0][k] for k in param_grid.keys()}
@@ -265,8 +293,7 @@ class StrategyGridSearch:
         
         # Save comparison
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        comparison_path = os.path.join(self.output_dir, f"strategy_comparison_{timestamp}.csv")
-        comparison_df.to_csv(comparison_path)
+        comparison_path = self.save_results(comparison_df, "strategy_comparison", "comparison")
         
         logger.info(f"Saved strategy comparison to {comparison_path}")
         
@@ -286,9 +313,6 @@ class StrategyGridSearch:
             logger.info(f"Parameters: {best_results[best_strategy]}")
         
         return results
-
-# Add alias for StrategyGridSearch for backward compatibility
-GridSearch = StrategyGridSearch
 
 def parse_args():
     """Parse command line arguments."""
@@ -329,7 +353,7 @@ def main():
     data = pd.read_pickle(args.data_path)
     
     # Initialize grid search
-    grid_search = StrategyGridSearch(args.config, experiment_dir)
+    grid_search = GridSearch(args.config, experiment_dir)
     
     # Load parameter grid
     if args.param_grid:

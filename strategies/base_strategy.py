@@ -28,6 +28,33 @@ class BaseStrategy(ABC):
         self.name = name
         self.params = params if params is not None else {}
     
+    def get_name(self) -> str:
+        """
+        Get the strategy name.
+        
+        Returns:
+            Strategy name
+        """
+        return self.name
+    
+    def get_parameters(self) -> Dict:
+        """
+        Get the strategy parameters.
+        
+        Returns:
+            Dictionary of strategy parameters
+        """
+        return self.params
+    
+    def set_parameters(self, params: Dict) -> None:
+        """
+        Set the strategy parameters.
+        
+        Args:
+            params: Dictionary of strategy parameters
+        """
+        self.params = params
+    
     @abstractmethod
     def generate_signals(self, data: pd.DataFrame) -> pd.Series:
         """

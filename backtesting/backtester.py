@@ -33,10 +33,14 @@ class Backtester:
         Initialize the backtester with configuration.
         
         Args:
-            config_path: Path to the YAML configuration file
+            config_path: Path to the YAML configuration file or config dict
         """
-        with open(config_path, 'r') as file:
-            self.config = yaml.safe_load(file)
+        if isinstance(config_path, str):
+            with open(config_path, 'r') as file:
+                self.config = yaml.safe_load(file)
+        else:
+            # Handle case where config is passed directly as a dict
+            self.config = config_path
         
         # Get backtesting configuration with defaults
         backtesting_config = self.config.get('backtesting', {})

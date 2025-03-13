@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class MovingAverageCrossover(BaseStrategy):
     """Moving Average Crossover strategy."""
     
-    def __init__(self, name: str, params: Dict):
+    def __init__(self, name: str = "MovingAverageCrossover", params: Optional[Dict] = None):
         """
         Initialize the strategy.
         
@@ -32,6 +32,9 @@ class MovingAverageCrossover(BaseStrategy):
                 - slow_ma: Slow moving average period
                 - ma_type: Type of moving average ('sma' or 'ema')
         """
+        if params is None:
+            params = {'fast_ma': 20, 'slow_ma': 50, 'ma_type': 'sma'}
+            
         super().__init__(name, params)
         self.fast_ma = params.get('fast_ma', 20)
         self.slow_ma = params.get('slow_ma', 50)
@@ -91,7 +94,7 @@ class MovingAverageCrossover(BaseStrategy):
 class RSIThreshold(BaseStrategy):
     """RSI Threshold strategy."""
     
-    def __init__(self, name: str, params: Dict):
+    def __init__(self, name: str = "RSIStrategy", params: Optional[Dict] = None):
         """
         Initialize the strategy.
         
@@ -102,6 +105,9 @@ class RSIThreshold(BaseStrategy):
                 - oversold: Oversold threshold
                 - overbought: Overbought threshold
         """
+        if params is None:
+            params = {'rsi_period': 14, 'oversold': 30, 'overbought': 70}
+            
         super().__init__(name, params)
         self.rsi_period = params.get('rsi_period', 14)
         self.oversold = params.get('oversold', 30)
@@ -156,21 +162,22 @@ RSIStrategy = RSIThreshold
 class BollingerBreakout(BaseStrategy):
     """Bollinger Bands Breakout strategy."""
     
-    def __init__(self, name: str, params: Dict):
+    def __init__(self, name: str = "BollingerBandStrategy", params: Optional[Dict] = None):
         """
         Initialize the strategy.
         
         Args:
             name: Strategy name
             params: Strategy parameters
-                - window: Window size for Bollinger Bands
-                - std_dev: Number of standard deviations
-                - entry_threshold: Entry threshold as percentage of band width
+                - bb_period: Bollinger Bands calculation period
+                - bb_std: Number of standard deviations
         """
+        if params is None:
+            params = {'bb_period': 20, 'bb_std': 2.0}
+            
         super().__init__(name, params)
-        self.window = params.get('window', 20)
-        self.std_dev = params.get('std_dev', 2)
-        self.entry_threshold = params.get('entry_threshold', 0.05)
+        self.bb_period = params.get('bb_period', 20)
+        self.bb_std = params.get('bb_std', 2.0)
     
     def generate_signals(self, data: pd.DataFrame) -> pd.Series:
         """
@@ -186,9 +193,9 @@ class BollingerBreakout(BaseStrategy):
         signals = pd.Series(0, index=data.index)
         
         # Check if Bollinger Bands columns exist
-        upper_band_col = f"bb_upper_{self.window}_{self.std_dev}"
-        middle_band_col = f"bb_middle_{self.window}_{self.std_dev}"
-        lower_band_col = f"bb_lower_{self.window}_{self.std_dev}"
+        upper_band_col = f"bb_upper_{self.bb_period}_{self.bb_std}"
+        middle_band_col = f"bb_middle_{self.bb_period}_{self.bb_std}"
+        lower_band_col = f"bb_lower_{self.bb_period}_{self.bb_std}"
         
         required_cols = [upper_band_col, middle_band_col, lower_band_col]
         
@@ -238,23 +245,24 @@ BollingerBandStrategy = BollingerBreakout
 class MACDStrategy(BaseStrategy):
     """MACD strategy."""
     
-    def __init__(self, name: str, params: Dict):
+    def __init__(self, name: str = "MACDStrategy", params: Optional[Dict] = None):
         """
         Initialize the strategy.
         
         Args:
             name: Strategy name
             params: Strategy parameters
-                - fast: Fast EMA period
-                - slow: Slow EMA period
-                - signal: Signal EMA period
-                - histogram_threshold: Minimum histogram value to trigger signal
+                - fast_period: Fast EMA period
+                - slow_period: Slow EMA period
+                - signal_period: Signal line period
         """
+        if params is None:
+            params = {'fast_period': 12, 'slow_period': 26, 'signal_period': 9}
+            
         super().__init__(name, params)
-        self.fast = params.get('fast', 12)
-        self.slow = params.get('slow', 26)
-        self.signal = params.get('signal', 9)
-        self.histogram_threshold = params.get('histogram_threshold', 0.0)
+        self.fast_period = params.get('fast_period', 12)
+        self.slow_period = params.get('slow_period', 26)
+        self.signal_period = params.get('signal_period', 9)
     
     def generate_signals(self, data: pd.DataFrame) -> pd.Series:
         """
@@ -270,9 +278,9 @@ class MACDStrategy(BaseStrategy):
         signals = pd.Series(0, index=data.index)
         
         # Check if MACD columns exist
-        macd_line_col = f"macd_line_{self.fast}_{self.slow}"
-        signal_line_col = f"macd_signal_{self.fast}_{self.slow}_{self.signal}"
-        histogram_col = f"macd_histogram_{self.fast}_{self.slow}_{self.signal}"
+        macd_line_col = f"macd_line_{self.fast_period}_{self.slow_period}"
+        signal_line_col = f"macd_signal_{self.fast_period}_{self.slow_period}_{self.signal_period}"
+        histogram_col = f"macd_histogram_{self.fast_period}_{self.slow_period}_{self.signal_period}"
         
         if histogram_col in data.columns:
             # Use pre-calculated MACD histogram
@@ -302,21 +310,24 @@ class MACDStrategy(BaseStrategy):
 class SupportResistance(BaseStrategy):
     """Support and Resistance strategy."""
     
-    def __init__(self, name: str, params: Dict):
+    def __init__(self, name: str = "SupportResistance", params: Optional[Dict] = None):
         """
         Initialize the strategy.
         
         Args:
             name: Strategy name
             params: Strategy parameters
-                - window: Window size for finding local extrema
-                - threshold: Threshold for identifying key levels
-                - bounce_factor: Factor to determine breakout vs. bounce
+                - lookback: Lookback period for finding pivots
+                - threshold: Price distance threshold for clustering
+                - max_levels: Maximum number of levels to consider
         """
+        if params is None:
+            params = {'lookback': 50, 'threshold': 0.02, 'max_levels': 5}
+            
         super().__init__(name, params)
-        self.window = params.get('window', 20)
-        self.threshold = params.get('threshold', 0.02)  # 2% of price
-        self.bounce_factor = params.get('bounce_factor', 0.5)  # 50% of distance to level
+        self.lookback = params.get('lookback', 50)
+        self.threshold = params.get('threshold', 0.02)
+        self.max_levels = params.get('max_levels', 5)
     
     def _find_levels(self, data: pd.DataFrame) -> Tuple[List[float], List[float]]:
         """
@@ -334,14 +345,14 @@ class SupportResistance(BaseStrategy):
         
         # Find local maxima for resistance levels
         resistance_levels = []
-        for i in range(self.window, len(high) - self.window):
-            if high.iloc[i] == high.iloc[i-self.window:i+self.window].max():
+        for i in range(self.lookback, len(high) - self.lookback):
+            if high.iloc[i] == high.iloc[i-self.lookback:i+self.lookback].max():
                 resistance_levels.append(high.iloc[i])
         
         # Find local minima for support levels
         support_levels = []
-        for i in range(self.window, len(low) - self.window):
-            if low.iloc[i] == low.iloc[i-self.window:i+self.window].min():
+        for i in range(self.lookback, len(low) - self.lookback):
+            if low.iloc[i] == low.iloc[i-self.lookback:i+self.lookback].min():
                 support_levels.append(low.iloc[i])
         
         # Cluster levels that are close to each other
@@ -400,7 +411,7 @@ class SupportResistance(BaseStrategy):
         signals = pd.Series(0, index=data.index)
         
         # Loop through each day
-        for i in range(self.window * 2, len(data)):
+        for i in range(self.lookback * 2, len(data)):
             # Use data up to current day to find levels
             historical_data = data.iloc[:i]
             
@@ -444,23 +455,24 @@ class SupportResistance(BaseStrategy):
 
 
 class SupportResistanceStrategy(BaseStrategy):
-    """Support and Resistance trading strategy."""
+    """Support and Resistance strategy."""
     
-    def __init__(self, name: str, params: Dict):
+    def __init__(self, name: str = "SupportResistanceStrategy", params: Optional[Dict] = None):
         """
         Initialize the strategy.
         
         Args:
             name: Strategy name
             params: Strategy parameters
-                - window: Window for identifying support and resistance levels
-                - threshold: Threshold for price deviation (percentage)
-                - lookback: Number of periods to look back for S/R identification
+                - window: Window size for support/resistance detection
+                - distance_threshold: Distance to consider price near support/resistance
         """
+        if params is None:
+            params = {'window': 50, 'distance_threshold': 0.01}
+            
         super().__init__(name, params)
-        self.window = params.get('window', 20)
-        self.threshold = params.get('threshold', 0.02)
-        self.lookback = params.get('lookback', 5)
+        self.window = params.get('window', 50)
+        self.distance_threshold = params.get('distance_threshold', 0.01)
     
     def _identify_support_resistance(self, data: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
         """
@@ -481,10 +493,10 @@ class SupportResistanceStrategy(BaseStrategy):
         resistance = pd.Series(np.nan, index=data.index)
         
         # Identify local minima and maxima
-        for i in range(self.lookback, len(data) - self.lookback):
+        for i in range(self.window, len(data) - self.window):
             # Check if this is a local minimum (potential support)
             is_min = True
-            for j in range(1, self.lookback + 1):
+            for j in range(1, self.window + 1):
                 if lows.iloc[i] > lows.iloc[i-j] or lows.iloc[i] > lows.iloc[i+j]:
                     is_min = False
                     break
@@ -494,7 +506,7 @@ class SupportResistanceStrategy(BaseStrategy):
             
             # Check if this is a local maximum (potential resistance)
             is_max = True
-            for j in range(1, self.lookback + 1):
+            for j in range(1, self.window + 1):
                 if highs.iloc[i] < highs.iloc[i-j] or highs.iloc[i] < highs.iloc[i+j]:
                     is_max = False
                     break
@@ -535,7 +547,7 @@ class SupportResistanceStrategy(BaseStrategy):
                 support_dist = (close_price - support.iloc[i]) / support.iloc[i]
                 
                 # Buy signal if price is close to support and moving up
-                if abs(support_dist) < self.threshold and close_price > prev_close:
+                if abs(support_dist) < self.distance_threshold and close_price > prev_close:
                     signals.iloc[i] = 1
             
             if not pd.isna(resistance.iloc[i]):
@@ -543,37 +555,31 @@ class SupportResistanceStrategy(BaseStrategy):
                 resistance_dist = (resistance.iloc[i] - close_price) / resistance.iloc[i]
                 
                 # Sell signal if price is close to resistance and moving down
-                if abs(resistance_dist) < self.threshold and close_price < prev_close:
+                if abs(resistance_dist) < self.distance_threshold and close_price < prev_close:
                     signals.iloc[i] = -1
         
         return signals
 
 
 class CombinedStrategy(BaseStrategy):
-    """Combined strategy that uses multiple sub-strategies with weighting."""
+    """Combined strategy that aggregates signals from multiple strategies."""
     
-    def __init__(self, name: str, params: Dict):
+    def __init__(self, name: str = "CombinedStrategy", params: Optional[Dict] = None):
         """
-        Initialize the combined strategy.
+        Initialize the strategy.
         
         Args:
             name: Strategy name
             params: Strategy parameters
-                - strategies: List of strategy instances
-                - weights: List of weights for each strategy
+                - threshold: Signal strength threshold
         """
+        if params is None:
+            params = {'threshold': 0.5}
+            
         super().__init__(name, params)
-        self.strategies = params.get('strategies', [])
-        self.weights = params.get('weights', [])
-        
-        # Normalize weights
-        if self.weights:
-            total_weight = sum(self.weights)
-            self.weights = [w / total_weight for w in self.weights]
-        else:
-            # Equal weights if none provided
-            weight = 1.0 / len(self.strategies) if self.strategies else 0
-            self.weights = [weight] * len(self.strategies)
+        self.threshold = params.get('threshold', 0.5)
+        self.strategies = []
+        self.weights = []
     
     def add_strategy(self, strategy: BaseStrategy, weight: float = 1.0):
         """
